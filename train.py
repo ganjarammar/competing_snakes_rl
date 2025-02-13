@@ -9,10 +9,19 @@ def plot(scores1, scores2, mean_scores1, mean_scores2):
     plt.title('Training...')
     plt.xlabel('Number of Games')
     plt.ylabel('Score')
-    plt.plot(scores1, label='Snake 1')
-    plt.plot(scores2, label='Snake 2')
-    plt.plot(mean_scores1, label='Snake 1 Mean')
-    plt.plot(mean_scores2, label='Snake 2 Mean')
+    
+    # Define colors
+    SNAKE1_COLOR = 'blue'
+    SNAKE1_MEAN_COLOR = 'lightblue'
+    SNAKE2_COLOR = 'darkred'
+    SNAKE2_MEAN_COLOR = 'lightcoral'
+    
+    # Plot with consistent colors
+    plt.plot(scores1, color=SNAKE1_COLOR, label='Snake 1')
+    plt.plot(scores2, color=SNAKE2_COLOR, label='Snake 2')
+    plt.plot(mean_scores1, color=SNAKE1_MEAN_COLOR, label='Snake 1 Mean')
+    plt.plot(mean_scores2, color=SNAKE2_MEAN_COLOR, label='Snake 2 Mean')
+    
     plt.ylim(ymin=0)
     plt.legend()
     if len(scores1) > 0:
@@ -40,7 +49,10 @@ def train():
     agent2 = Agent()
     
     try:
+        game_number = 0  # Initialize game number
         while True:
+            game_number += 1  # Increment game number each loop
+            
             # Get old states
             state1, state2 = env.reset()
             
@@ -60,7 +72,8 @@ def train():
                 state1 = new_state1
                 state2 = new_state2
                 
-                env.render()
+                # Render game with current game number
+                env.render(game_number)
                 
                 if done:
                     break

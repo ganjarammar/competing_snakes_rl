@@ -14,9 +14,9 @@ class Direction(Enum):
     DOWN = 4
 
 class SnakeGameEnv:
-    def __init__(self, width=640, height=480, grid_size=20):
+    def __init__(self, width=640, height=520, grid_size=20):
         self.width = width
-        self.height = height
+        self.height = height - 40  # Adjust height to fit arena below header
         self.grid_size = grid_size
         
         # Initialize Pygame
@@ -216,33 +216,39 @@ class SnakeGameEnv:
             
         return reward, False
 
-    def render(self):
-        self.screen.fill((0, 0, 0))
+    def render(self, game_number):
+        # Fill the screen with a white background for the header
+        self.screen.fill((255, 255, 255), (0, 0, self.width, 40))
         
-        # Draw food
-        pygame.draw.rect(self.screen, (255, 0, 0), 
-                        pygame.Rect(self.food[0], self.food[1], 
-                                  self.grid_size-2, self.grid_size-2))
+        # Draw scores with matching colors
+        text_surface1 = self.font.render('Snake 1: ' + str(self.score1), True, (0, 0, 255))  # Blue
+        text_surface2 = self.font.render('Snake 2: ' + str(self.score2), True, (255, 0, 0))  # Red
+        # Right align game number with 6 digit space
+        game_number_surface = self.font.render(f'Game Number: {game_number:6}', True, (0, 0, 0))  # Black
+        self.screen.blit(text_surface1, (10, 5))
+        self.screen.blit(text_surface2, (150, 5))
+        self.screen.blit(game_number_surface, (self.width - 250, 5))  # Adjust for right alignment
+        
+        # Fill the rest of the screen with black for the arena
+        self.screen.fill((0, 0, 0), (0, 40, self.width, self.height))
+        
+        # Draw food (green)
+        pygame.draw.rect(self.screen, (0, 255, 0), 
+                         pygame.Rect(self.food[0], self.food[1] + 40, 
+                                     self.grid_size-2, self.grid_size-2))
         
         # Draw snake1 (blue)
         for pt in self.snake1:
             pygame.draw.rect(self.screen, (0, 0, 255), 
-                           pygame.Rect(pt[0], pt[1], 
-                                     self.grid_size-2, self.grid_size-2))
-            
-        # Draw snake2 (green)
-        for pt in self.snake2:
-            pygame.draw.rect(self.screen, (0, 255, 0), 
-                           pygame.Rect(pt[0], pt[1], 
-                                     self.grid_size-2, self.grid_size-2))
+                             pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
         
-        # Draw scores
-        score_text = f'Blue: {self.score1}  Green: {self.score2}'
-        text_surface = self.font.render(score_text, True, (255, 255, 255))
-        self.screen.blit(text_surface, (10, 10))
+        # Draw snake2 (red)
+        for pt in self.snake2:
+            pygame.draw.rect(self.screen, (255, 0, 0), 
+                             pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
         
         pygame.display.flip()
-        self.clock.tick(10)  # Control game speed
+        self.clock.tick(10)
 
     def close(self):
         pygame.quit()

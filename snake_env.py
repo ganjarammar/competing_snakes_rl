@@ -29,12 +29,22 @@ class SnakeGameEnv:
 
     def reset(self):
         # Initialize snakes positions (one on left side, one on right side)
-        self.snake1 = [(self.width//4//self.grid_size * self.grid_size, 
-                       self.height//2//self.grid_size * self.grid_size)]
-        self.snake2 = [(3*self.width//4//self.grid_size * self.grid_size, 
-                       self.height//2//self.grid_size * self.grid_size)]
-        
+        # Snake 1 - starts with head and one body segment, moving right
+        head1_x = self.width//4//self.grid_size * self.grid_size
+        head1_y = self.height//2//self.grid_size * self.grid_size
+        self.snake1 = [
+            (head1_x, head1_y),                    # Head
+            (head1_x - self.grid_size, head1_y)    # Body segment (one unit behind head)
+        ]
         self.snake1_direction = Direction.RIGHT
+
+        # Snake 2 - starts with head and one body segment, moving left
+        head2_x = 3*self.width//4//self.grid_size * self.grid_size
+        head2_y = self.height//2//self.grid_size * self.grid_size
+        self.snake2 = [
+            (head2_x, head2_y),                    # Head
+            (head2_x + self.grid_size, head2_y)    # Body segment (one unit behind head)
+        ]
         self.snake2_direction = Direction.LEFT
         
         self.food = self._place_food()

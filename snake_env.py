@@ -178,6 +178,7 @@ class SnakeGameEnv:
         else:
             self.snake2_direction = new_dir
             
+        # Update head position based on direction
         x = snake[0][0]
         y = snake[0][1]
         if direction == Direction.RIGHT:
@@ -189,25 +190,34 @@ class SnakeGameEnv:
         elif direction == Direction.UP:
             y -= self.grid_size
             
-        new_head = (x, y)
-        
         # Check if snake died
-        if self._is_collision(new_head):
+        new_pos = (x, y)
+        if self._is_collision(new_pos):
             return -10, True
-            
-        snake.insert(0, new_head)
+
+        # Store the last position before moving (for growing)
+        last_pos = snake[-1]
+
+        # Move body segments
+        for i in range(len(snake)-1, 0, -1):
+            snake[i] = snake[i-1]
         
+        # Update head position
+        snake[0] = new_pos
+            
         # Check if snake ate food
         reward = 0
-        if new_head == self.food:
+        if new_pos == self.food:
             reward = 10
             if snake_num == 1:
                 self.score1 += 1
+                # Add new segment at the end using the last position
+                self.snake1.append(last_pos)
             else:
                 self.score2 += 1
+                # Add new segment at the end using the last position
+                self.snake2.append(last_pos)
             self.food = self._place_food()
-        else:
-            snake.pop()
             
         if snake_num == 1:
             self.snake1 = snake
@@ -223,11 +233,10 @@ class SnakeGameEnv:
         # Draw scores with matching colors
         text_surface1 = self.font.render('Snake 1: ' + str(self.score1), True, (0, 0, 255))  # Blue
         text_surface2 = self.font.render('Snake 2: ' + str(self.score2), True, (255, 0, 0))  # Red
-        # Right align game number with 6 digit space
         game_number_surface = self.font.render(f'Game Number: {game_number:6}', True, (0, 0, 0))  # Black
         self.screen.blit(text_surface1, (10, 5))
         self.screen.blit(text_surface2, (150, 5))
-        self.screen.blit(game_number_surface, (self.width - 250, 5))  # Adjust for right alignment
+        self.screen.blit(game_number_surface, (self.width - 250, 5))
         
         # Fill the rest of the screen with black for the arena
         self.screen.fill((0, 0, 0), (0, 40, self.width, self.height))
@@ -237,15 +246,49 @@ class SnakeGameEnv:
                          pygame.Rect(self.food[0], self.food[1] + 40, 
                                      self.grid_size-2, self.grid_size-2))
         
-        # Draw snake1 (blue)
-        for pt in self.snake1:
-            pygame.draw.rect(self.screen, (0, 0, 255), 
-                             pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
+        # Draw snake1 (blue for body, light blue for head)
+        for i, pt in enumerate(self.snake1):
+            color = (100, 100, 255) if i == 0 else (0, 0, 255)  # Light blue head, blue body
+            if i == 0:  # Head
+                pygame.draw.rect(self.screen, color, 
+                               pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
+                # Add eyes to make head more distinctive
+                eye_size = 4
+                if self.snake1_direction in [Direction.RIGHT, Direction.LEFT]:
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + self.grid_size//2, pt[1] + 40 + self.grid_size//3), eye_size)
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + self.grid_size//2, pt[1] + 40 + 2*self.grid_size//3), eye_size)
+                else:
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + self.grid_size//3, pt[1] + 40 + self.grid_size//2), eye_size)
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + 2*self.grid_size//3, pt[1] + 40 + self.grid_size//2), eye_size)
+            else:  # Body
+                pygame.draw.rect(self.screen, color, 
+                               pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
         
-        # Draw snake2 (red)
-        for pt in self.snake2:
-            pygame.draw.rect(self.screen, (255, 0, 0), 
-                             pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
+        # Draw snake2 (red for body, pink for head)
+        for i, pt in enumerate(self.snake2):
+            color = (255, 100, 100) if i == 0 else (255, 0, 0)  # Pink head, red body
+            if i == 0:  # Head
+                pygame.draw.rect(self.screen, color, 
+                               pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
+                # Add eyes to make head more distinctive
+                eye_size = 4
+                if self.snake2_direction in [Direction.RIGHT, Direction.LEFT]:
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + self.grid_size//2, pt[1] + 40 + self.grid_size//3), eye_size)
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + self.grid_size//2, pt[1] + 40 + 2*self.grid_size//3), eye_size)
+                else:
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + self.grid_size//3, pt[1] + 40 + self.grid_size//2), eye_size)
+                    pygame.draw.circle(self.screen, (255, 255, 255),
+                                    (pt[0] + 2*self.grid_size//3, pt[1] + 40 + self.grid_size//2), eye_size)
+            else:  # Body
+                pygame.draw.rect(self.screen, color, 
+                               pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
         
         pygame.display.flip()
         self.clock.tick(10)

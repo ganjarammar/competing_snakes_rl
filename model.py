@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import numpy as np
 import random
 from collections import deque
 
@@ -34,43 +33,99 @@ class Agent:
         self.batch_size = 1000
         self.min_memory_size = 1000  # Minimum memory size before training
 
-    def get_state(self, state):
+    def get_state(self, game, snake_num):
+        state = game._get_state_for_snake(snake_num)
         return torch.FloatTensor(state).to(device)
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
+    def train_step(self, state, action, reward, next_state, done):
+        state = torch.FloatTensor(state).to(device)
+        next_state = torch.FloatTensor(next_state).to(device)
+        action = torch.FloatTensor(action).to(device)
+        reward = torch.FloatTensor([reward]).to(device)
+        done = torch.FloatTensor([done]).to(device)
+
+        # Predicted Q values with current state
+        pred = self.model(state)
+        target = pred.clone()
+        
+        # Q_new = reward + gamma * max(next_predicted Q value)
+        if not done:
+            next_pred = self.model(next_state)
+            target = reward + self.gamma * torch.max(next_pred)
+        else:
+            target = reward
+
+        # Update Q value for taken action
+        pred[torch.argmax(action).item()] = target
+        
+        # Calculate loss and update weights
+        self.optimizer.zero_grad()
+        loss = F.mse_loss(pred.unsqueeze(0), target.unsqueeze(0))
+        loss.backward()
+        self.optimizer.step()
+
+    def train_short_memory(self, state, action, reward, next_state, done):
+        """Train with a single step of experience"""
+        self.train_step(state, action, reward, next_state, done)
+
     def train_long_memory(self):
+        """Train with a batch of experiences from memory"""
         if len(self.memory) < self.min_memory_size:
             return  # Don't train if we don't have enough memories
             
         batch_size = min(self.batch_size, len(self.memory))
         mini_sample = random.sample(self.memory, batch_size)
         
-        states, actions, rewards, next_states, dones = zip(*mini_sample)
-        self.train_step(states, actions, rewards, next_states, dones)
-
-    def train_step(self, states, actions, rewards, next_states, dones):
-        states = torch.FloatTensor(np.array(states)).to(device)
-        next_states = torch.FloatTensor(np.array(next_states)).to(device)
-        actions = torch.LongTensor(np.array(actions)).to(device)
-        rewards = torch.FloatTensor(np.array(rewards)).to(device)
-        dones = torch.BoolTensor(np.array(dones)).to(device)
-
-        # Get predicted Q values with current states
-        current_q = self.model(states)
-        next_q = self.model(next_states)
-        target_q = current_q.clone()
-
-        for idx in range(len(dones)):
-            Q_new = rewards[idx]
-            if not dones[idx]:
-                Q_new = rewards[idx] + self.gamma * torch.max(next_q[idx])
-            target_q[idx][torch.argmax(actions[idx]).item()] = Q_new
-
-        # Q_new = reward + gamma * max(next_predicted Q value)
+        states = []
+        actions = []
+        rewards = []
+        next_states = []
+        dones = []
+        
+        for state, action, reward, next_state, done in mini_sample:
+            # Convert to list if it's a numpy array
+            if hasattr(state, 'tolist'):
+                state = state.tolist()
+            if hasattr(action, 'tolist'):
+                action = action.tolist()
+            if hasattr(next_state, 'tolist'):
+                next_state = next_state.tolist()
+                
+            states.append(state)
+            actions.append(action)
+            rewards.append(reward)
+            next_states.append(next_state)
+            dones.append(done)
+            
+        # Convert directly to tensors
+        states = torch.FloatTensor(states).to(device)
+        actions = torch.FloatTensor(actions).to(device)
+        rewards = torch.FloatTensor(rewards).to(device)
+        next_states = torch.FloatTensor(next_states).to(device)
+        dones = torch.FloatTensor(dones).to(device)
+        
+        # Get all the Q values for current states
+        current_q_values = self.model(states)
+        
+        # Get Q values for next states
+        next_q_values = self.model(next_states)
+        max_next_q = torch.max(next_q_values, dim=1)[0]
+        
+        # Calculate target Q values
+        target_q_values = current_q_values.clone()
+        for idx in range(batch_size):
+            action_idx = torch.argmax(actions[idx]).item()
+            if dones[idx]:
+                target_q_values[idx, action_idx] = rewards[idx]
+            else:
+                target_q_values[idx, action_idx] = rewards[idx] + self.gamma * max_next_q[idx]
+        
+        # Update network
         self.optimizer.zero_grad()
-        loss = F.mse_loss(current_q, target_q)
+        loss = F.mse_loss(current_q_values, target_q_values)
         loss.backward()
         self.optimizer.step()
 

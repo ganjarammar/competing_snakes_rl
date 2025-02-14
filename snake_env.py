@@ -14,10 +14,37 @@ class Direction(Enum):
     DOWN = 4
 
 class SnakeGameEnv:
-    def __init__(self, width=640, height=520, grid_size=20):
+    def __init__(self, width=640, height=520, grid_size=20, curriculum_type=None):
         self.width = width
-        self.height = height - 40  # Adjust height to fit arena below header
+        # Adjust height to fit header and footer (40 pixels each)
+        self.height = height - 80  
         self.grid_size = grid_size
+        self.original_width = width
+        self.original_height = height
+        self.curriculum_type = curriculum_type
+        self.current_level = 1
+        self.max_level = 10
+        self.food_count = 1
+        self.n_games = 0  # Start from 0 for terminal/plot tracking
+        self.current_game = 0  # Current game number for arena display
+        
+        # Get curriculum name for display
+        self.curriculum_name = {
+            'food': '1 (Dynamic Food)',
+            'arena': '2 (Dynamic Arena)',
+            'combined': '3 (Combined)'
+        }.get(curriculum_type, 'None')
+        
+        # Curriculum learning parameters
+        if curriculum_type == 'food':
+            self.food_count = 5  # Start with more food
+        elif curriculum_type == 'arena':
+            self.width = width // 2  # Start with smaller arena
+            self.height = (height - 80) // 2
+        elif curriculum_type == 'combined':
+            self.width = width // 2
+            self.height = (height - 80) // 2
+            self.food_count = 3
         
         # Initialize Pygame
         pygame.init()
@@ -58,87 +85,90 @@ class SnakeGameEnv:
         return self._get_state()
 
     def _place_food(self):
-        while True:
-            x = random.randint(0, (self.width-self.grid_size)//self.grid_size) * self.grid_size
-            y = random.randint(0, (self.height-self.grid_size)//self.grid_size) * self.grid_size
-            food_pos = (x, y)
-            if food_pos not in self.snake1 and food_pos not in self.snake2:
-                return food_pos
+        foods = []
+        for _ in range(self.food_count):
+            while True:
+                x = random.randrange(0, self.width, self.grid_size)
+                y = random.randrange(0, self.height, self.grid_size)
+                food_pos = (x, y)
+                
+                # Check if food position is valid (not on snakes or other food)
+                if (food_pos not in self.snake1 and 
+                    food_pos not in self.snake2 and 
+                    food_pos not in foods):
+                    foods.append(food_pos)
+                    break
+        return foods
 
     def _get_state(self):
         # Create state representations for both snakes
-        state1 = self._get_snake_state(self.snake1, self.snake1_direction, self.snake2)
-        state2 = self._get_snake_state(self.snake2, self.snake2_direction, self.snake1)
+        state1 = self._get_state_for_snake(1)
+        state2 = self._get_state_for_snake(2)
         return state1, state2
 
-    def _get_snake_state(self, snake, direction, other_snake):
-        head = snake[0]
-        
-        # Danger straight, right, left
-        point_l = point_r = point_u = point_d = head
-        if direction == Direction.RIGHT:
-            point_r = (head[0] + self.grid_size, head[1])
-            point_u = (head[0], head[1] - self.grid_size)
-            point_d = (head[0], head[1] + self.grid_size)
-        elif direction == Direction.LEFT:
-            point_l = (head[0] - self.grid_size, head[1])
-            point_u = (head[0], head[1] - self.grid_size)
-            point_d = (head[0], head[1] + self.grid_size)
-        elif direction == Direction.UP:
-            point_u = (head[0], head[1] - self.grid_size)
-            point_l = (head[0] - self.grid_size, head[1])
-            point_r = (head[0] + self.grid_size, head[1])
-        elif direction == Direction.DOWN:
-            point_d = (head[0], head[1] + self.grid_size)
-            point_l = (head[0] - self.grid_size, head[1])
-            point_r = (head[0] + self.grid_size, head[1])
+    def _get_state_for_snake(self, snake_num):
+        if snake_num == 1:
+            snake = self.snake1
+            other_snake = self.snake2
+            direction = self.snake1_direction
+        else:
+            snake = self.snake2
+            other_snake = self.snake1
+            direction = self.snake2_direction
 
+        head = snake[0]
+
+        # Points around the head
+        point_l = (head[0] - self.grid_size, head[1])
+        point_r = (head[0] + self.grid_size, head[1])
+        point_u = (head[0], head[1] - self.grid_size)
+        point_d = (head[0], head[1] + self.grid_size)
+
+        # Current direction
         dir_l = direction == Direction.LEFT
         dir_r = direction == Direction.RIGHT
         dir_u = direction == Direction.UP
         dir_d = direction == Direction.DOWN
 
-        food = self.food
-        
         state = [
             # Danger straight
-            (dir_r and self._is_collision(point_r)) or 
-            (dir_l and self._is_collision(point_l)) or 
-            (dir_u and self._is_collision(point_u)) or 
-            (dir_d and self._is_collision(point_d)),
+            (dir_r and self._is_collision(point_r, snake[1:], other_snake)) or
+            (dir_l and self._is_collision(point_l, snake[1:], other_snake)) or
+            (dir_u and self._is_collision(point_u, snake[1:], other_snake)) or
+            (dir_d and self._is_collision(point_d, snake[1:], other_snake)),
 
             # Danger right
-            (dir_u and self._is_collision(point_r)) or 
-            (dir_d and self._is_collision(point_l)) or 
-            (dir_l and self._is_collision(point_u)) or 
-            (dir_r and self._is_collision(point_d)),
+            (dir_u and self._is_collision(point_r, snake[1:], other_snake)) or
+            (dir_d and self._is_collision(point_l, snake[1:], other_snake)) or
+            (dir_l and self._is_collision(point_u, snake[1:], other_snake)) or
+            (dir_r and self._is_collision(point_d, snake[1:], other_snake)),
 
             # Danger left
-            (dir_d and self._is_collision(point_r)) or 
-            (dir_u and self._is_collision(point_l)) or 
-            (dir_r and self._is_collision(point_u)) or 
-            (dir_l and self._is_collision(point_d)),
-            
+            (dir_d and self._is_collision(point_r, snake[1:], other_snake)) or
+            (dir_u and self._is_collision(point_l, snake[1:], other_snake)) or
+            (dir_r and self._is_collision(point_u, snake[1:], other_snake)) or
+            (dir_l and self._is_collision(point_d, snake[1:], other_snake)),
+
             # Move direction
             dir_l,
             dir_r,
             dir_u,
             dir_d,
-            
+
             # Food location
-            food[0] < head[0],  # food left
-            food[0] > head[0],  # food right
-            food[1] < head[1],  # food up
-            food[1] > head[1]   # food down
+            any(food[0] < head[0] for food in self.food),  # food left
+            any(food[0] > head[0] for food in self.food),  # food right
+            any(food[1] < head[1] for food in self.food),  # food up
+            any(food[1] > head[1] for food in self.food)   # food down
         ]
         return np.array(state, dtype=int)
 
-    def _is_collision(self, pt):
+    def _is_collision(self, pt, body, other_snake):
         # Check if point collides with walls or snakes
         if (pt[0] >= self.width or pt[0] < 0 or 
             pt[1] >= self.height or pt[1] < 0):
             return True
-        if pt in self.snake1[1:] or pt in self.snake2:
+        if pt in body or pt in other_snake:
             return True
         return False
 
@@ -163,6 +193,8 @@ class SnakeGameEnv:
                 reward1, reward2 = -10, 10
             else:
                 reward1, reward2 = 10, -10
+            self.n_games += 1  # Increment game number
+            self.current_game = self.n_games  # Update current game number for arena display
         
         return self._get_state(), reward1, reward2, done
 
@@ -202,7 +234,7 @@ class SnakeGameEnv:
             
         # Check if snake died
         new_pos = (x, y)
-        if self._is_collision(new_pos):
+        if self._is_collision(new_pos, snake[1:], self.snake1 if snake_num == 2 else self.snake2):
             return -10, True
 
         # Store the last position before moving (for growing)
@@ -217,17 +249,21 @@ class SnakeGameEnv:
             
         # Check if snake ate food
         reward = 0
-        if new_pos == self.food:
-            reward = 10
-            if snake_num == 1:
-                self.score1 += 1
-                # Add new segment at the end using the last position
-                self.snake1.append(last_pos)
-            else:
-                self.score2 += 1
-                # Add new segment at the end using the last position
-                self.snake2.append(last_pos)
-            self.food = self._place_food()
+        for food in self.food:
+            if new_pos == food:
+                reward = 10
+                if snake_num == 1:
+                    self.score1 += 1
+                    # Add new segment at the end using the last position
+                    self.snake1.append(last_pos)
+                else:
+                    self.score2 += 1
+                    # Add new segment at the end using the last position
+                    self.snake2.append(last_pos)
+                self.food.remove(food)
+                if len(self.food) == 0:
+                    self.food = self._place_food()
+                break
             
         if snake_num == 1:
             self.snake1 = snake
@@ -236,25 +272,132 @@ class SnakeGameEnv:
             
         return reward, False
 
+    def _move(self, snake_num):
+        # Get the current snake's data
+        if snake_num == 1:
+            snake = self.snake1.copy()
+            direction = self.snake1_direction
+        else:
+            snake = self.snake2.copy()
+            direction = self.snake2_direction
+            
+        # Get current head position
+        head = snake[0]
+        x = head[0]
+        y = head[1]
+        
+        # Update head position based on direction
+        if direction == Direction.RIGHT:
+            x += self.grid_size
+        elif direction == Direction.LEFT:
+            x -= self.grid_size
+        elif direction == Direction.DOWN:
+            y += self.grid_size
+        elif direction == Direction.UP:
+            y -= self.grid_size
+            
+        # Check if snake died
+        new_pos = (x, y)
+        if self._is_collision(new_pos, snake[1:], self.snake1 if snake_num == 2 else self.snake2):
+            return -10, True
+
+        # Store the last position before moving (for growing)
+        last_pos = snake[-1]
+        
+        # Move snake
+        snake.insert(0, new_pos)
+        snake.pop()
+            
+        # Check if snake ate food
+        reward = 0
+        for food in self.food:
+            if new_pos == food:
+                reward = 10
+                if snake_num == 1:
+                    self.score1 += 1
+                    # Add new segment at the end using the last position
+                    snake.append(last_pos)
+                else:
+                    self.score2 += 1
+                    # Add new segment at the end using the last position
+                    snake.append(last_pos)
+                self.food.remove(food)
+                if len(self.food) == 0:
+                    self.food = self._place_food()
+                break
+            
+        # Update snake position
+        if snake_num == 1:
+            self.snake1 = snake
+        else:
+            self.snake2 = snake
+            
+        return reward, False
+
+    def play_step(self, action1, action2):
+        # Update frame
+        self.render(self.n_games)  
+        pygame.event.pump()  # Process event queue
+        
+        # Convert actions to directions
+        # [1,0,0] -> straight
+        # [0,1,0] -> right turn
+        # [0,0,1] -> left turn
+        
+        # Snake 1 movement
+        clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
+        idx1 = clock_wise.index(self.snake1_direction)
+        
+        if np.array_equal(action1, [1, 0, 0]):
+            new_dir1 = clock_wise[idx1]  # no change
+        elif np.array_equal(action1, [0, 1, 0]):
+            next_idx1 = (idx1 + 1) % 4
+            new_dir1 = clock_wise[next_idx1]  # right turn
+        else:  # [0,0,1]
+            next_idx1 = (idx1 - 1) % 4
+            new_dir1 = clock_wise[next_idx1]  # left turn
+        
+        self.snake1_direction = new_dir1
+        
+        # Snake 2 movement
+        idx2 = clock_wise.index(self.snake2_direction)
+        
+        if np.array_equal(action2, [1, 0, 0]):
+            new_dir2 = clock_wise[idx2]  # no change
+        elif np.array_equal(action2, [0, 1, 0]):
+            next_idx2 = (idx2 + 1) % 4
+            new_dir2 = clock_wise[next_idx2]  # right turn
+        else:  # [0,0,1]
+            next_idx2 = (idx2 - 1) % 4
+            new_dir2 = clock_wise[next_idx2]  # left turn
+        
+        self.snake2_direction = new_dir2
+        
+        # Move both snakes
+        reward1, game_over1 = self._move(1)
+        reward2, game_over2 = self._move(2)
+        
+        game_over = game_over1 or game_over2
+        
+        if game_over:
+            self.n_games += 1  # Increment game number
+            self.current_game = self.n_games  # Update current game number for arena display
+        
+        return game_over, self.score1, self.score2, reward1, reward2
+
     def render(self, game_number):
-        # Fill the screen with a white background for the header
-        self.screen.fill((255, 255, 255), (0, 0, self.width, 40))
+        # Fill the screen with a white background for the header and footer
+        self.screen.fill((255, 255, 255), (0, 0, self.width, 40))  # header
+        self.screen.fill((255, 255, 255), (0, self.height + 40, self.width, 40))  # footer
         
-        # Draw scores with matching colors
-        text_surface1 = self.font.render('Snake 1: ' + str(self.score1), True, (0, 0, 255))  # Blue
-        text_surface2 = self.font.render('Snake 2: ' + str(self.score2), True, (255, 0, 0))  # Red
-        game_number_surface = self.font.render(f'Game Number: {game_number:6}', True, (0, 0, 0))  # Black
-        self.screen.blit(text_surface1, (10, 5))
-        self.screen.blit(text_surface2, (150, 5))
-        self.screen.blit(game_number_surface, (self.width - 250, 5))
-        
-        # Fill the rest of the screen with black for the arena
+        # Fill the game area with black
         self.screen.fill((0, 0, 0), (0, 40, self.width, self.height))
         
         # Draw food (green)
-        pygame.draw.rect(self.screen, (0, 255, 0), 
-                         pygame.Rect(self.food[0], self.food[1] + 40, 
-                                     self.grid_size-2, self.grid_size-2))
+        for food in self.food:
+            pygame.draw.rect(self.screen, (0, 255, 0), 
+                             pygame.Rect(food[0], food[1] + 40, 
+                                         self.grid_size-2, self.grid_size-2))
         
         # Draw snake1 (blue for body, light blue for head)
         for i, pt in enumerate(self.snake1):
@@ -300,8 +443,54 @@ class SnakeGameEnv:
                 pygame.draw.rect(self.screen, color, 
                                pygame.Rect(pt[0], pt[1] + 40, self.grid_size-2, self.grid_size-2))
         
+        # Draw header text
+        score_text = f'Snake 1 Score: {self.score1}    Snake 2 Score: {self.score2}'
+        text_surface = self.font.render(score_text, True, (0, 0, 0))
+        text_rect = text_surface.get_rect()
+        text_rect.midtop = (self.width // 2, 10)
+        self.screen.blit(text_surface, text_rect)
+        
+        # Draw footer text
+        # Game number on the left (show current game)
+        game_text = f'Game: {self.current_game}'  # Show current game being played
+        game_surface = self.font.render(game_text, True, (0, 0, 0))
+        game_rect = game_surface.get_rect()
+        game_rect.bottomleft = (10, self.height + 75)  # 5 pixels from bottom and left
+        self.screen.blit(game_surface, game_rect)
+        
+        # Curriculum type on the right
+        curr_text = f'Curriculum: {self.curriculum_name}'
+        curr_surface = self.font.render(curr_text, True, (0, 0, 0))
+        curr_rect = curr_surface.get_rect()
+        curr_rect.bottomright = (self.width - 10, self.height + 75)  # 5 pixels from bottom and right
+        self.screen.blit(curr_surface, curr_rect)
+        
         pygame.display.flip()
         self.clock.tick(10)
+
+    def update_curriculum(self, mean_score, threshold=50):
+        """Update curriculum based on agent's performance"""
+        if mean_score > threshold and self.current_level < self.max_level:
+            self.current_level += 1
+            
+            if self.curriculum_type == 'food':
+                self.food_count = max(1, 6 - self.current_level // 2)
+            
+            elif self.curriculum_type == 'arena':
+                width_increment = (self.original_width - self.width) // (self.max_level - self.current_level + 1)
+                height_increment = ((self.original_height - 40) - self.height) // (self.max_level - self.current_level + 1)
+                self.width += width_increment
+                self.height += height_increment
+            
+            elif self.curriculum_type == 'combined':
+                self.food_count = max(1, 4 - self.current_level // 3)
+                width_increment = (self.original_width - self.width) // (self.max_level - self.current_level + 1)
+                height_increment = ((self.original_height - 40) - self.height) // (self.max_level - self.current_level + 1)
+                self.width += width_increment
+                self.height += height_increment
+            
+            return True
+        return False
 
     def close(self):
         pygame.quit()
